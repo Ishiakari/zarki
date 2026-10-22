@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect } from 'react';
+import React, { useReducer, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/colors';
@@ -7,16 +7,20 @@ import {
   calculatorReducer,
   formatNumberWithCommas,
   parseCalculatorValue,
+  resolvePendingCalculation,
 } from '../domain/calculatorEngine';
 
 export interface CalculatorKeypadProps {
   currency?: string;
   initialValue?: string | number;
   onApply?: (value: number, formatted: string) => void;
-  onValueChange?: (value: number, currentStr: string) => void;
+  onValueChange?: (value: number, currentStr: string, expression: string) => void;
   compact?: boolean;
+  showPreview?: boolean;
   showFooterAction?: boolean;
   footerActionLabel?: string;
+  onFooterActionPress?: () => void;
+  onHidePress?: () => void;
 }
 
 export const CalculatorKeypad: React.FC<CalculatorKeypadProps> = ({
@@ -25,24 +29,38 @@ export const CalculatorKeypad: React.FC<CalculatorKeypadProps> = ({
   onApply,
   onValueChange,
   compact = false,
+  showPreview = true,
   showFooterAction = true,
   footerActionLabel = 'Done',
+  onFooterActionPress,
+  onHidePress,
 }) => {
   const [state, dispatch] = useReducer(calculatorReducer, CALCULATOR_INITIAL_STATE);
 
+  // Keep a stable ref to onValueChange to prevent re-render loops from unmemoized parent callbacks
+  const onValueChangeRef = useRef(onValueChange);
+  onValueChangeRef.current = onValueChange;
+
+  // Track the last value emitted to parent so we don't restore values that the keypad just emitted
+  const lastEmittedValueRef = useRef<string>(String(initialValue ?? '0'));
+
+  // Sync initialValue when it changes from outside (e.g. modal opens or preset chip clicked)
   useEffect(() => {
-    if (initialValue !== undefined && initialValue !== null) {
-      const initStr = String(initialValue);
+    const initStr = String(initialValue ?? '0');
+    if (initStr !== lastEmittedValueRef.current && initStr !== state.current) {
+      lastEmittedValueRef.current = initStr;
       dispatch({ type: 'restore', current: initStr });
     }
-  }, [initialValue]);
+  }, [initialValue, state.current]);
 
+  // Notify parent ONLY when state.current or state.expression changes
   useEffect(() => {
-    if (onValueChange) {
+    if (onValueChangeRef.current) {
       const num = parseCalculatorValue(state.current);
-      onValueChange(num, state.current);
+      lastEmittedValueRef.current = state.current;
+      onValueChangeRef.current(num, state.current, state.expression);
     }
-  }, [state.current, onValueChange]);
+  }, [state.current, state.expression]);
 
   const handleKey = (key: string) => {
     if (key === 'clear') {
@@ -61,13 +79,18 @@ export const CalculatorKeypad: React.FC<CalculatorKeypadProps> = ({
   };
 
   const handleApply = () => {
-    // Resolve any remaining calculation first
+    // Resolve any remaining pending calculation before applying
     let finalCurrent = state.current;
-    if (state.prevValue !== null && state.operator && !state.waitingForOperand) {
-      const resolved = calculatorReducer(state, { type: 'equals' });
+    if (state.prevValue !== null && state.operator) {
+      const resolved = resolvePendingCalculation(state);
       finalCurrent = resolved.current;
+      dispatch({ type: 'equals' });
     }
     const num = parseCalculatorValue(finalCurrent);
+    if (onFooterActionPress) {
+      onFooterActionPress();
+      return;
+    }
     onApply?.(num, finalCurrent);
   };
 
@@ -109,23 +132,37 @@ export const CalculatorKeypad: React.FC<CalculatorKeypadProps> = ({
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
+      {/* Optional Hide / Collapse Handle */}
+      {onHidePress && (
+        <Pressable
+          style={styles.hideHandle}
+          hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
+          onPress={onHidePress}
+        >
+          <View style={styles.hideBar} />
+          <Ionicons name="chevron-down" size={16} color={theme.textMuted} style={{ marginTop: -2 }} />
+        </Pressable>
+      )}
+
       {/* Expression & Display Card */}
-      <View style={styles.previewCard}>
-        <Text style={styles.expressionText} numberOfLines={1}>
-          {state.expression || ' '}
-        </Text>
-        <View style={styles.resultRow}>
-          <Text style={styles.currencyPrefix}>{currencySymbol}</Text>
-          <Text style={styles.resultText} numberOfLines={1} adjustsFontSizeToFit>
-            {formattedDisplay}
+      {showPreview && (
+        <View style={styles.previewCard}>
+          <Text style={styles.expressionText} numberOfLines={1}>
+            {state.expression || ' '}
           </Text>
+          <View style={styles.resultRow}>
+            <Text style={styles.currencyPrefix}>{currencySymbol}</Text>
+            <Text style={styles.resultText} numberOfLines={1} adjustsFontSizeToFit>
+              {formattedDisplay}
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Grid Keypad */}
-      <View style={styles.grid}>
+      <View style={[styles.grid, compact && styles.gridCompact]}>
         {rows.map((row, rIdx) => (
-          <View key={`row-${rIdx}`} style={styles.row}>
+          <View key={`row-${rIdx}`} style={[styles.row, compact && styles.rowCompact]}>
             {row.map((btn, cIdx) => {
               const isOp = btn.type === 'op';
               const isClear = btn.type === 'clear';
@@ -197,8 +234,22 @@ const styles = StyleSheet.create({
     borderColor: theme.cardBorder,
   },
   containerCompact: {
-    padding: 12,
-    borderRadius: 18,
+    padding: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  hideHandle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    marginBottom: 6,
+  },
+  hideBar: {
+    width: 32,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: theme.cardBorder,
   },
   previewCard: {
     backgroundColor: theme.surface2,
@@ -237,9 +288,15 @@ const styles = StyleSheet.create({
   grid: {
     gap: 8,
   },
+  gridCompact: {
+    gap: 6,
+  },
   row: {
     flexDirection: 'row',
     gap: 8,
+  },
+  rowCompact: {
+    gap: 6,
   },
   key: {
     flex: 1,
@@ -252,7 +309,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.04)',
   },
   keyCompact: {
-    height: 44,
+    height: 40,
     borderRadius: 12,
   },
   keyPressed: {
@@ -295,9 +352,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   footerButton: {
-    marginTop: 12,
-    height: 50,
-    borderRadius: 16,
+    marginTop: 8,
+    height: 46,
+    borderRadius: 14,
     backgroundColor: theme.primary,
     alignItems: 'center',
     justifyContent: 'center',

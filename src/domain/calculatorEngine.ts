@@ -4,6 +4,7 @@ export interface CalculatorState {
   operator: string | null;
   waitingForOperand: boolean;
   expression: string;
+  isResult?: boolean;
 }
 
 export const CALCULATOR_INITIAL_STATE: CalculatorState = {
@@ -12,6 +13,7 @@ export const CALCULATOR_INITIAL_STATE: CalculatorState = {
   operator: null,
   waitingForOperand: false,
   expression: '',
+  isResult: false,
 };
 
 export type CalculatorAction =
@@ -23,8 +25,7 @@ export type CalculatorAction =
   | { type: 'clear' }
   | { type: 'restore'; current: string };
 
-const MAX_DIGITS = 11;
-const OPERATORS = new Set(['+', '−', '-', '×', '*', '÷', '/', '%']);
+const MAX_DIGITS = 12;
 
 export function formatNumberWithCommas(str: string): string {
   if (!str) return '0';
@@ -34,9 +35,9 @@ export function formatNumberWithCommas(str: string): string {
 }
 
 export function resolvePendingCalculation(state: CalculatorState, minorUnits = 2): CalculatorState {
-  if (state.prevValue !== null && state.operator && !state.waitingForOperand) {
+  if (state.prevValue !== null && state.operator) {
     const prev = state.prevValue;
-    const curr = parseFloat(state.current) || 0;
+    const curr = state.waitingForOperand ? prev : (parseFloat(state.current) || 0);
     let sum = prev;
 
     if (state.operator === '+') {
@@ -48,19 +49,20 @@ export function resolvePendingCalculation(state: CalculatorState, minorUnits = 2
     } else if (state.operator === '÷' || state.operator === '/') {
       sum = curr !== 0 ? prev / curr : prev;
     } else if (state.operator === '%') {
-      sum = curr !== 0 ? prev % curr : prev;
+      sum = prev * (curr / 100);
     }
 
     const rounded = Math.round((sum + Number.EPSILON) * 10 ** minorUnits) / 10 ** minorUnits;
     const formattedPrev = formatNumberWithCommas(String(prev));
-    const formattedCurr = formatNumberWithCommas(state.current);
+    const formattedCurr = formatNumberWithCommas(String(curr));
 
     return {
       current: String(rounded),
       prevValue: null,
       operator: null,
       waitingForOperand: false,
-      expression: `${formattedPrev} ${state.operator} ${formattedCurr}`,
+      expression: `${formattedPrev} ${state.operator} ${formattedCurr} =`,
+      isResult: true,
     };
   }
 
@@ -75,17 +77,27 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
       const { digit } = action;
       const isZeros = /^0+$/.test(digit);
 
+      // If user just solved a calculation and types a digit, start a brand new number
+      if (state.isResult) {
+        return {
+          ...CALCULATOR_INITIAL_STATE,
+          current: isZeros ? '0' : digit,
+          isResult: false,
+        };
+      }
+
       if (state.waitingForOperand) {
         return {
           ...state,
           current: isZeros ? '0' : digit,
           waitingForOperand: false,
+          isResult: false,
         };
       }
 
       if (state.current === '0') {
         if (isZeros) return state;
-        return { ...state, current: digit };
+        return { ...state, current: digit, isResult: false };
       }
 
       if (state.current.includes('.')) {
@@ -103,17 +115,27 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
       return {
         ...state,
         current: nextVal,
+        isResult: false,
       };
     }
 
     case 'decimal': {
       if (minorUnits <= 0) return state;
 
+      if (state.isResult) {
+        return {
+          ...CALCULATOR_INITIAL_STATE,
+          current: '0.',
+          isResult: false,
+        };
+      }
+
       if (state.waitingForOperand) {
         return {
           ...state,
           current: '0.',
           waitingForOperand: false,
+          isResult: false,
         };
       }
 
@@ -124,27 +146,60 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
       return {
         ...state,
         current: `${state.current}.`,
+        isResult: false,
       };
     }
 
     case 'operator': {
-      const currentNum = parseFloat(state.current) || 0;
+      // Percentage calculation
+      if (action.op === '%') {
+        const currNum = parseFloat(state.current) || 0;
+        if (state.prevValue !== null && state.operator) {
+          if (state.operator === '+' || state.operator === '−' || state.operator === '-') {
+            const pct = state.prevValue * (currNum / 100);
+            return {
+              ...state,
+              current: String(pct),
+              waitingForOperand: false,
+              isResult: false,
+            };
+          }
+          if (state.operator === '×' || state.operator === '*' || state.operator === '÷' || state.operator === '/') {
+            const pct = currNum / 100;
+            return {
+              ...state,
+              current: String(pct),
+              waitingForOperand: false,
+              isResult: false,
+            };
+          }
+        }
+        const pct = currNum / 100;
+        return {
+          ...state,
+          current: String(pct),
+          expression: `${formatNumberWithCommas(state.current)} %`,
+          isResult: false,
+        };
+      }
+
       let currentState = state;
 
-      // If we already have a calculation in progress and user types another operator, resolve the first one first
+      // If there is already a calculation in progress and user hasn't pressed an operator right before, resolve first
       if (state.prevValue !== null && state.operator && !state.waitingForOperand) {
         currentState = resolvePendingCalculation(state, minorUnits);
       }
 
-      const resolvedNum = parseFloat(currentState.current) || currentNum;
+      const currentNum = parseFloat(currentState.current) || 0;
       const formattedPrev = formatNumberWithCommas(currentState.current);
 
       return {
         ...currentState,
-        prevValue: resolvedNum,
+        prevValue: currentNum,
         operator: action.op,
         waitingForOperand: true,
         expression: `${formattedPrev} ${action.op}`,
+        isResult: false,
       };
     }
 
@@ -153,6 +208,14 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
     }
 
     case 'backspace': {
+      if (state.isResult) {
+        return {
+          ...state,
+          expression: '',
+          isResult: false,
+        };
+      }
+
       if (state.waitingForOperand) {
         return {
           ...state,
@@ -160,18 +223,7 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
           waitingForOperand: false,
           prevValue: null,
           expression: '',
-        };
-      }
-
-      if (state.prevValue !== null && state.operator) {
-        const sliced = state.current.slice(0, -1);
-        if (sliced) {
-          return { ...state, current: sliced };
-        }
-        return {
-          ...state,
-          current: String(state.prevValue),
-          waitingForOperand: true,
+          isResult: false,
         };
       }
 
@@ -180,7 +232,7 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
       return {
         ...state,
         current: nextCurrent,
-        expression: '',
+        isResult: false,
       };
     }
 
@@ -189,10 +241,11 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
     }
 
     case 'restore': {
-      const clean = action.current ? action.current.replace(/,/g, '') : '0';
+      const clean = action.current ? String(action.current).replace(/,/g, '') : '0';
       return {
         ...CALCULATOR_INITIAL_STATE,
         current: clean && !isNaN(Number(clean)) ? clean : '0',
+        isResult: false,
       };
     }
 
@@ -202,7 +255,8 @@ export function calculatorReducer(state: CalculatorState, action: CalculatorActi
 }
 
 export function parseCalculatorValue(str: string): number {
-  const clean = str.replace(/,/g, '');
+  if (!str) return 0;
+  const clean = String(str).replace(/,/g, '');
   const num = parseFloat(clean);
   return isNaN(num) ? 0 : num;
 }

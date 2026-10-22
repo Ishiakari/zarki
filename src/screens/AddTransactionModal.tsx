@@ -15,7 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Account, Category, TransactionType } from '../types';
 import { theme, typography } from '../theme/colors';
-import { CalculatorModal } from '../components/CalculatorModal';
+import { CalculatorKeypad } from '../components/CalculatorKeypad';
+import { formatNumberWithCommas } from '../domain/calculatorEngine';
 
 const CATEGORY_COLORS = [
   '#508A59', '#F59E0B', '#3B82F6', '#EF4444', '#EC4899', '#8B5CF6', '#06B6D4', '#10B981', '#F43F5E', '#D97706'
@@ -66,7 +67,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [toAccountId, setToAccountId] = useState(accounts[1]?.id || '');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [note, setNote] = useState('');
-  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [expressionStr, setExpressionStr] = useState('');
+  const [isKeypadVisible, setIsKeypadVisible] = useState(true);
 
   // Custom Category State
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -77,9 +79,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   useEffect(() => {
     if (visible) {
       setType(initialType);
+      setIsKeypadVisible(true);
       if (initialAmount !== undefined) {
         setAmountStr(String(initialAmount));
+      } else {
+        setAmountStr('');
       }
+      setExpressionStr('');
+      Keyboard.dismiss();
     }
   }, [visible, initialType, initialAmount]);
 
@@ -126,7 +133,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             style={styles.keyboardAvoidContainer}
           >
             <View style={styles.modalCard}>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces={false}>
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+              >
                 {/* Header */}
               <View style={styles.header}>
                 <Text style={styles.headerTitle}>New Transaction</Text>
@@ -163,39 +176,66 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 })}
               </View>
 
-              {/* Amount Input with Calculator */}
+              {/* Interactive In-App Amount Field (Tarsi Style - No Phone Keyboard) */}
               <View style={styles.inputContainer}>
                 <View style={styles.amountLabelRow}>
                   <Text style={styles.inputLabel}>Amount</Text>
                   <Pressable
                     style={({ pressed }) => [styles.calculatorBadge, pressed && { opacity: 0.7 }]}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    onPress={() => setIsCalculatorOpen(true)}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setIsKeypadVisible(!isKeypadVisible);
+                    }}
                   >
-                    <Ionicons name="calculator-outline" size={14} color={theme.primary} />
-                    <Text style={styles.calculatorBadgeText}>Calculator</Text>
+                    <Ionicons
+                      name={isKeypadVisible ? 'keypad' : 'keypad-outline'}
+                      size={14}
+                      color={theme.primary}
+                    />
+                    <Text style={styles.calculatorBadgeText}>
+                      {isKeypadVisible ? 'In-App Keypad' : 'Show Keypad'}
+                    </Text>
                   </Pressable>
                 </View>
-                <View style={styles.amountInputRow}>
-                  <Text style={styles.amountCurrencyPrefix}>
-                    {currency === 'PHP' ? '₱' : currency === 'USD' ? '$' : currency}
-                  </Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={theme.textMuted}
-                    value={amountStr}
-                    onChangeText={setAmountStr}
-                  />
-                  <Pressable
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    style={({ pressed }) => [styles.amountCalcIconBtn, pressed && { opacity: 0.7 }]}
-                    onPress={() => setIsCalculatorOpen(true)}
-                  >
-                    <Ionicons name="calculator-outline" size={22} color={theme.primary} />
-                  </Pressable>
-                </View>
+
+                {/* Amount Display Card - Tapping activates In-App Keypad with zero Phone Keyboard */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.amountCard,
+                    isKeypadVisible && styles.amountCardActive,
+                    pressed && { opacity: 0.9 },
+                  ]}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setIsKeypadVisible(true);
+                  }}
+                >
+                  <View style={styles.amountDisplayLeft}>
+                    {expressionStr ? (
+                      <Text style={styles.amountExpressionText} numberOfLines={1}>
+                        {expressionStr}
+                      </Text>
+                    ) : null}
+                    <View style={styles.amountNumberRow}>
+                      <Text style={styles.amountCurrencyPrefix}>
+                        {currency === 'PHP' ? '₱' : currency === 'USD' ? '$' : currency}
+                      </Text>
+                      <Text style={styles.amountValueText} numberOfLines={1} adjustsFontSizeToFit>
+                        {formatNumberWithCommas(amountStr || '0')}
+                      </Text>
+                      {isKeypadVisible && <View style={styles.cursorBlink} />}
+                    </View>
+                  </View>
+
+                  <View style={[styles.amountRightIconBox, isKeypadVisible && styles.amountRightIconBoxActive]}>
+                    <Ionicons
+                      name="calculator"
+                      size={20}
+                      color={isKeypadVisible ? '#FFFFFF' : theme.textSecondary}
+                    />
+                  </View>
+                </Pressable>
               </View>
 
               {/* Account Selector */}
@@ -379,38 +419,47 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   placeholderTextColor={theme.textMuted}
                   value={note}
                   onChangeText={setNote}
+                  onFocus={() => setIsKeypadVisible(false)}
                 />
               </View>
-
-              {/* Submit Button */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.saveBtn,
-                  pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
-                ]}
-                android_ripple={{ color: 'rgba(255, 255, 255, 0.2)' }}
-                onPress={handleSave}
-              >
-                <Text style={styles.saveBtnText}>Save Transaction</Text>
-              </Pressable>
             </ScrollView>
+
+            {/* Pinned Floating In-App Keypad - Always Visible at the Bottom */}
+            {isKeypadVisible ? (
+              <View style={styles.dockedKeypadWrap}>
+                <CalculatorKeypad
+                  currency={currency}
+                  initialValue={amountStr || '0'}
+                  showPreview={false}
+                  compact={true}
+                  onValueChange={(_val, curStr, expr) => {
+                    setAmountStr(curStr);
+                    setExpressionStr(expr);
+                  }}
+                  onHidePress={() => setIsKeypadVisible(false)}
+                  showFooterAction={true}
+                  footerActionLabel="Save Transaction"
+                  onFooterActionPress={handleSave}
+                />
+              </View>
+            ) : (
+              <View style={styles.pinnedSaveWrap}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.saveBtn,
+                    pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
+                  ]}
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.2)' }}
+                  onPress={handleSave}
+                >
+                  <Text style={styles.saveBtnText}>Save Transaction</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
           </KeyboardAvoidingView>
         </View>
       </TouchableWithoutFeedback>
-
-      {/* Tarsi Interactive Calculator Keypad Bottom Sheet */}
-      <CalculatorModal
-        visible={isCalculatorOpen}
-        initialValue={amountStr || '0'}
-        currency={currency}
-        title="Enter Amount"
-        onClose={() => setIsCalculatorOpen(false)}
-        onApply={(_val, formatted) => {
-          setAmountStr(formatted);
-          setIsCalculatorOpen(false);
-        }}
-      />
     </Modal>
   );
 };
@@ -423,16 +472,26 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidContainer: {
     width: '100%',
+    height: '92%',
+    justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: theme.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     borderWidth: 1,
     borderColor: theme.cardBorder,
-    maxHeight: '90%',
+    height: '100%',
+    flexDirection: 'column',
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    paddingBottom: 10,
   },
   header: {
     flexDirection: 'row',
@@ -512,29 +571,76 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  amountInputRow: {
+  amountCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#0A0E0D',
     borderRadius: 16,
     paddingHorizontal: 16,
-    borderWidth: 1,
+    paddingVertical: 12,
+    borderWidth: 1.5,
     borderColor: theme.cardBorder,
+  },
+  amountCardActive: {
+    borderColor: theme.primary,
+    backgroundColor: '#0E1613',
+  },
+  amountDisplayLeft: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  amountExpressionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.primary,
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
+  amountNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   amountCurrencyPrefix: {
     color: theme.primary,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     marginRight: 6,
   },
-  amountInput: {
-    flex: 1,
-    minHeight: 56,
-    paddingVertical: 10,
+  amountValueText: {
     color: theme.text,
     fontSize: 32,
     fontWeight: '800',
     letterSpacing: -0.5,
+  },
+  cursorBlink: {
+    width: 2.5,
+    height: 26,
+    backgroundColor: theme.primary,
+    marginLeft: 4,
+    borderRadius: 1.5,
+  },
+  amountRightIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: theme.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  amountRightIconBoxActive: {
+    backgroundColor: theme.primary,
+  },
+  dockedKeypadWrap: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.cardBorder,
+  },
+  pinnedSaveWrap: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.cardBorder,
   },
   textInput: {
     backgroundColor: '#0A0E0D',

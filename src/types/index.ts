@@ -95,6 +95,17 @@ export interface WarrantyItem {
   serialNumber?: string;
 }
 
+export interface InstallmentPlan {
+  id: string;
+  name: string;
+  totalAmount: number;
+  monthlyAmount: number;
+  totalTerms: number;
+  paidTerms: number;
+  accountId?: string;
+  startDate?: string;
+}
+
 export interface FinanceNote {
   id: string;
   title: string;
@@ -112,6 +123,7 @@ export interface FinanceState {
   goals: Goal[];
   debts: DebtReceivable[];
   recurring: RecurringTransaction[];
+  installments?: InstallmentPlan[];
   shoppingList: ShoppingItem[];
   warranties: WarrantyItem[];
   notes: FinanceNote[];

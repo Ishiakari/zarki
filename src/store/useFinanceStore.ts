@@ -7,6 +7,7 @@ import {
   Goal,
   DebtReceivable,
   RecurringTransaction,
+  InstallmentPlan,
   ShoppingItem,
   WarrantyItem,
   FinanceNote,
@@ -117,20 +118,27 @@ export function useFinanceStore() {
   }, [updateStateAndPersist]);
 
   // 3. Budgets
-  const setCategoryBudget = useCallback((categoryId: string, amount: number) => {
+  const setCategoryBudget = useCallback((categoryId: string, amount: number, interval: 'monthly' | 'weekly' | 'yearly' = 'monthly') => {
     updateStateAndPersist(prev => {
       const existing = prev.budgets.find(b => b.categoryId === categoryId);
       let updatedBudgets: Budget[];
       if (existing) {
-        updatedBudgets = prev.budgets.map(b => (b.categoryId === categoryId ? { ...b, amount } : b));
+        updatedBudgets = prev.budgets.map(b => (b.categoryId === categoryId ? { ...b, amount, interval } : b));
       } else {
         updatedBudgets = [
           ...prev.budgets,
-          { id: `b_${Date.now()}`, categoryId, amount, interval: 'monthly' },
+          { id: `b_${Date.now()}`, categoryId, amount, interval },
         ];
       }
       return { ...prev, budgets: updatedBudgets };
     });
+  }, [updateStateAndPersist]);
+
+  const deleteCategoryBudget = useCallback((categoryId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      budgets: prev.budgets.filter(b => b.categoryId !== categoryId),
+    }));
   }, [updateStateAndPersist]);
 
   // 4. Goals
@@ -145,11 +153,65 @@ export function useFinanceStore() {
     }));
   }, [updateStateAndPersist]);
 
-  const contributeToGoal = useCallback((goalId: string, amount: number) => {
+  const updateGoal = useCallback((goalId: string, data: Partial<Goal>) => {
     updateStateAndPersist(prev => ({
       ...prev,
-      goals: prev.goals.map(g => (g.id === goalId ? { ...g, currentAmount: g.currentAmount + amount } : g)),
+      goals: prev.goals.map(g => (g.id === goalId ? { ...g, ...data } : g)),
     }));
+  }, [updateStateAndPersist]);
+
+  const deleteGoal = useCallback((goalId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      goals: prev.goals.filter(g => g.id !== goalId),
+    }));
+  }, [updateStateAndPersist]);
+
+  const contributeToGoal = useCallback((goalId: string, amount: number, fromAccountId?: string) => {
+    updateStateAndPersist(prev => {
+      const targetGoal = prev.goals.find(g => g.id === goalId);
+      if (!targetGoal) return prev;
+
+      let updatedAccounts = prev.accounts;
+      let newTransactions = prev.transactions;
+
+      // If a funding account was selected, adjust its balance and record a ledger entry
+      if (fromAccountId) {
+        updatedAccounts = prev.accounts.map(acc => {
+          if (acc.id === fromAccountId) {
+            return { ...acc, balance: acc.balance - amount };
+          }
+          return acc;
+        });
+
+        const txTitle = amount >= 0
+          ? `Deposit to Goal: ${targetGoal.name}`
+          : `Withdraw from Goal: ${targetGoal.name}`;
+
+        const newTx: Transaction = {
+          id: `tx_${Date.now()}`,
+          amount: Math.abs(amount),
+          type: amount >= 0 ? 'expense' : 'income',
+          accountId: fromAccountId,
+          categoryId: 'goal-transfer',
+          date: new Date().toISOString().substring(0, 10),
+          createdAt: new Date().toISOString(),
+          note: txTitle,
+        };
+        newTransactions = [newTx, ...prev.transactions];
+      }
+
+      const updatedGoals = prev.goals.map(g =>
+        g.id === goalId ? { ...g, currentAmount: Math.max(0, g.currentAmount + amount) } : g
+      );
+
+      return {
+        ...prev,
+        goals: updatedGoals,
+        accounts: updatedAccounts,
+        transactions: newTransactions,
+      };
+    });
   }, [updateStateAndPersist]);
 
   // 5. Debts & Receivables
@@ -161,6 +223,13 @@ export function useFinanceStore() {
     updateStateAndPersist(prev => ({
       ...prev,
       debts: [...prev.debts, newItem],
+    }));
+  }, [updateStateAndPersist]);
+
+  const deleteDebt = useCallback((debtId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      debts: prev.debts.filter(d => d.id !== debtId),
     }));
   }, [updateStateAndPersist]);
 
@@ -187,10 +256,45 @@ export function useFinanceStore() {
     }));
   }, [updateStateAndPersist]);
 
+  const deleteRecurring = useCallback((recId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      recurring: prev.recurring.filter(r => r.id !== recId),
+    }));
+  }, [updateStateAndPersist]);
+
   const toggleRecurringActive = useCallback((recId: string) => {
     updateStateAndPersist(prev => ({
       ...prev,
       recurring: prev.recurring.map(r => (r.id === recId ? { ...r, isActive: !r.isActive } : r)),
+    }));
+  }, [updateStateAndPersist]);
+
+  // 7. Installments (Tarsi Pro)
+  const addInstallment = useCallback((itemData: Omit<InstallmentPlan, 'id'>) => {
+    const newInst: InstallmentPlan = {
+      ...itemData,
+      id: `inst_${Date.now()}`,
+    };
+    updateStateAndPersist(prev => ({
+      ...prev,
+      installments: [...(prev.installments || []), newInst],
+    }));
+  }, [updateStateAndPersist]);
+
+  const incrementInstallmentTerm = useCallback((installmentId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      installments: (prev.installments || []).map(inst =>
+        inst.id === installmentId ? { ...inst, paidTerms: Math.min(inst.totalTerms, inst.paidTerms + 1) } : inst
+      ),
+    }));
+  }, [updateStateAndPersist]);
+
+  const deleteInstallment = useCallback((installmentId: string) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      installments: (prev.installments || []).filter(inst => inst.id !== installmentId),
     }));
   }, [updateStateAndPersist]);
 
@@ -281,12 +385,20 @@ export function useFinanceStore() {
     deleteAccount,
     archiveAccount,
     setCategoryBudget,
+    deleteCategoryBudget,
     addGoal,
+    updateGoal,
+    deleteGoal,
     contributeToGoal,
     addDebtReceivable,
+    deleteDebt,
     toggleDebtSettled,
     addRecurring,
+    deleteRecurring,
     toggleRecurringActive,
+    addInstallment,
+    incrementInstallmentTerm,
+    deleteInstallment,
     addShoppingItem,
     toggleShoppingItem,
     addWarranty,

@@ -22,12 +22,20 @@ function AppContent() {
     deleteAccount,
     archiveAccount,
     setCategoryBudget,
+    deleteCategoryBudget,
     addGoal,
+    updateGoal,
+    deleteGoal,
     contributeToGoal,
     addDebtReceivable,
+    deleteDebt,
     toggleDebtSettled,
     addRecurring,
+    deleteRecurring,
     toggleRecurringActive,
+    addInstallment,
+    incrementInstallmentTerm,
+    deleteInstallment,
     addShoppingItem,
     toggleShoppingItem,
     addWarranty,
@@ -120,18 +128,27 @@ function AppContent() {
             categories={state.categories}
             accounts={state.accounts}
             recurring={state.recurring}
+            installments={state.installments}
             shoppingList={state.shoppingList}
             warranties={state.warranties}
             notes={state.notes}
             currency={state.preferredCurrency}
             bottomInset={bottomInset}
             onSetBudget={setCategoryBudget}
+            onDeleteBudget={deleteCategoryBudget}
             onAddGoal={addGoal}
+            onUpdateGoal={updateGoal}
+            onDeleteGoal={deleteGoal}
             onContributeGoal={contributeToGoal}
             onAddDebt={addDebtReceivable}
+            onDeleteDebt={deleteDebt}
             onToggleDebt={toggleDebtSettled}
             onAddRecurring={addRecurring}
+            onDeleteRecurring={deleteRecurring}
             onToggleRecurring={toggleRecurringActive}
+            onAddInstallment={addInstallment}
+            onIncrementInstallment={incrementInstallmentTerm}
+            onDeleteInstallment={deleteInstallment}
             onAddShoppingItem={addShoppingItem}
             onToggleShoppingItem={toggleShoppingItem}
             onAddWarranty={addWarranty}
