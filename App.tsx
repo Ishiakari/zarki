@@ -37,6 +37,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('wallet');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialType, setModalInitialType] = useState<'expense' | 'income' | 'transfer'>('expense');
+  const [modalInitialAmount, setModalInitialAmount] = useState<number | undefined>(undefined);
 
   // Calculate safe insets for Android status bar and gesture navigation bar
   const androidStatusBarHeight = StatusBar.currentHeight || 28;
@@ -51,8 +52,9 @@ function AppContent() {
     );
   }
 
-  const handleOpenAdd = (type: 'expense' | 'income' | 'transfer' = 'expense') => {
+  const handleOpenAdd = (type: 'expense' | 'income' | 'transfer' = 'expense', amount?: number) => {
     setModalInitialType(type);
+    setModalInitialAmount(amount);
     setIsModalOpen(true);
   };
 
@@ -213,8 +215,12 @@ function AppContent() {
       <AddTransactionModal
         visible={isModalOpen}
         initialType={modalInitialType}
+        initialAmount={modalInitialAmount}
         currency={state.preferredCurrency}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setModalInitialAmount(undefined);
+        }}
         accounts={state.accounts}
         categories={state.categories}
         onAddTransaction={addTransaction}

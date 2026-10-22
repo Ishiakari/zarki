@@ -23,6 +23,7 @@ import {
   calculateTotalLiabilities,
   formatCurrency,
 } from '../domain/calculator';
+import { CalculatorModal } from '../components/CalculatorModal';
 import { theme, typography } from '../theme/colors';
 import { getInstitution, INSTITUTIONS_LIST, Institution } from '../domain/institutions';
 
@@ -41,7 +42,7 @@ interface WalletScreenProps {
   debts: DebtReceivable[];
   transactions: Transaction[];
   currency: string;
-  onOpenAddTransaction: (type?: 'expense' | 'income' | 'transfer') => void;
+  onOpenAddTransaction: (type?: 'expense' | 'income' | 'transfer', amount?: number) => void;
   onUpdateAccountBalance?: (accountId: string, newBalance: number) => void;
   onAddAccount?: (account: Omit<Account, 'id'>) => void;
   onDeleteAccount?: (accountId: string) => void;
@@ -64,6 +65,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   const [period, setPeriod] = useState<'today' | 'month' | 'net'>('net');
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [editBalanceText, setEditBalanceText] = useState('');
+  const [isStandaloneCalculatorOpen, setIsStandaloneCalculatorOpen] = useState(false);
 
   // Add Account Modal State
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
@@ -333,6 +335,17 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
               <Ionicons name="swap-horizontal" size={18} color="#38BDF8" />
             </View>
             <Text style={styles.actionPillLabel} numberOfLines={1}>Transfer</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.actionPill, pressed && styles.actionPillPressed]}
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.08)', borderless: false }}
+            onPress={() => setIsStandaloneCalculatorOpen(true)}
+          >
+            <View style={[styles.actionIconBox, { backgroundColor: '#162C20' }]}>
+              <Ionicons name="calculator-outline" size={18} color={theme.primary} />
+            </View>
+            <Text style={styles.actionPillLabel} numberOfLines={1}>Calculator</Text>
           </Pressable>
 
           <Pressable
@@ -656,6 +669,18 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Tarsi Standalone Calculator Sheet */}
+      <CalculatorModal
+        visible={isStandaloneCalculatorOpen}
+        currency={currency}
+        title="Calculator"
+        onClose={() => setIsStandaloneCalculatorOpen(false)}
+        onQuickTransaction={(quickType, amount) => {
+          setIsStandaloneCalculatorOpen(false);
+          onOpenAddTransaction(quickType, amount);
+        }}
+      />
     </ScrollView>
   );
 

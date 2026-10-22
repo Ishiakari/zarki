@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Account, Category, TransactionType } from '../types';
 import { theme, typography } from '../theme/colors';
+import { CalculatorModal } from '../components/CalculatorModal';
 
 const CATEGORY_COLORS = [
   '#508A59', '#F59E0B', '#3B82F6', '#EF4444', '#EC4899', '#8B5CF6', '#06B6D4', '#10B981', '#F43F5E', '#D97706'
@@ -31,6 +32,7 @@ const AVAILABLE_CATEGORY_ICONS: (keyof typeof Ionicons.glyphMap)[] = [
 interface AddTransactionModalProps {
   visible: boolean;
   initialType?: TransactionType;
+  initialAmount?: number;
   currency?: string;
   onClose: () => void;
   accounts: Account[];
@@ -50,6 +52,7 @@ interface AddTransactionModalProps {
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   visible,
   initialType = 'expense',
+  initialAmount,
   currency = 'PHP',
   onClose,
   accounts,
@@ -58,11 +61,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onAddCategory,
 }) => {
   const [type, setType] = useState<TransactionType>(initialType);
-  const [amountStr, setAmountStr] = useState('');
+  const [amountStr, setAmountStr] = useState(initialAmount ? String(initialAmount) : '');
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [toAccountId, setToAccountId] = useState(accounts[1]?.id || '');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [note, setNote] = useState('');
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   // Custom Category State
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -73,8 +77,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   useEffect(() => {
     if (visible) {
       setType(initialType);
+      if (initialAmount !== undefined) {
+        setAmountStr(String(initialAmount));
+      }
     }
-  }, [visible, initialType]);
+  }, [visible, initialType, initialAmount]);
 
   const filteredCategories = categories.filter(c => c.kind === (type === 'income' ? 'income' : 'expense'));
 
@@ -156,9 +163,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 })}
               </View>
 
-              {/* Amount Input */}
+              {/* Amount Input with Calculator */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Amount</Text>
+                <View style={styles.amountLabelRow}>
+                  <Text style={styles.inputLabel}>Amount</Text>
+                  <Pressable
+                    style={({ pressed }) => [styles.calculatorBadge, pressed && { opacity: 0.7 }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() => setIsCalculatorOpen(true)}
+                  >
+                    <Ionicons name="calculator-outline" size={14} color={theme.primary} />
+                    <Text style={styles.calculatorBadgeText}>Calculator</Text>
+                  </Pressable>
+                </View>
                 <View style={styles.amountInputRow}>
                   <Text style={styles.amountCurrencyPrefix}>
                     {currency === 'PHP' ? '₱' : currency === 'USD' ? '$' : currency}
@@ -170,8 +187,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     placeholderTextColor={theme.textMuted}
                     value={amountStr}
                     onChangeText={setAmountStr}
-                    autoFocus
                   />
+                  <Pressable
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={({ pressed }) => [styles.amountCalcIconBtn, pressed && { opacity: 0.7 }]}
+                    onPress={() => setIsCalculatorOpen(true)}
+                  >
+                    <Ionicons name="calculator-outline" size={22} color={theme.primary} />
+                  </Pressable>
                 </View>
               </View>
 
@@ -375,6 +398,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </KeyboardAvoidingView>
         </View>
       </TouchableWithoutFeedback>
+
+      {/* Tarsi Interactive Calculator Keypad Bottom Sheet */}
+      <CalculatorModal
+        visible={isCalculatorOpen}
+        initialValue={amountStr || '0'}
+        currency={currency}
+        title="Enter Amount"
+        onClose={() => setIsCalculatorOpen(false)}
+        onApply={(_val, formatted) => {
+          setAmountStr(formatted);
+          setIsCalculatorOpen(false);
+        }}
+      />
     </Modal>
   );
 };
@@ -438,6 +474,34 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     marginBottom: 16,
+  },
+  amountLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  calculatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: theme.primarySoft,
+  },
+  calculatorBadgeText: {
+    color: theme.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  amountCalcIconBtn: {
+    padding: 6,
+    marginLeft: 6,
+    borderRadius: 10,
+    backgroundColor: theme.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputLabel: {
     color: theme.textSecondary,
