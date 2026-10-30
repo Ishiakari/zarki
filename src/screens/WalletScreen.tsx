@@ -28,7 +28,7 @@ import { theme, typography } from '../theme/colors';
 import { getInstitution, INSTITUTIONS_LIST, Institution } from '../domain/institutions';
 
 // Enable LayoutAnimation on Android legacy architecture without throwing New Architecture warning
-const isFabricEnabled = (global as any)?.nativeFabricUIManager != null;
+const isFabricEnabled = (globalThis as any)?.nativeFabricUIManager != null;
 if (Platform.OS === 'android' && !isFabricEnabled && UIManager.setLayoutAnimationEnabledExperimental) {
   try {
     UIManager.setLayoutAnimationEnabledExperimental(true);

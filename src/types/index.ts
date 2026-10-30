@@ -35,6 +35,7 @@ export interface Category {
   icon: string;
   color: string;
   kind: 'expense' | 'income';
+  classification?: 'needs' | 'wants' | 'savings';
 }
 
 export interface Budget {
@@ -116,6 +117,11 @@ export interface FinanceNote {
 export interface FinanceState {
   preferredCurrency: string;
   preferredName: string;
+  budgetRuleConfig?: {
+    needsRatio: number;
+    wantsRatio: number;
+    savingsRatio: number;
+  };
   accounts: Account[];
   transactions: Transaction[];
   categories: Category[];

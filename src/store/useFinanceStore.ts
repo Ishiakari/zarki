@@ -78,6 +78,53 @@ export function useFinanceStore() {
     });
   }, [updateStateAndPersist]);
 
+  const addTransactionsBatch = useCallback((batchData: Array<Omit<Transaction, 'id' | 'createdAt'>>) => {
+    if (batchData.length === 0) return;
+    const now = Date.now();
+    const newTxs: Transaction[] = batchData.map((txData, index) => ({
+      ...txData,
+      id: `tx_${now + index}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    }));
+
+    updateStateAndPersist(prev => {
+      const updatedTransactions = [...newTxs, ...prev.transactions];
+      let updatedAccounts = [...prev.accounts];
+
+      for (const newTx of newTxs) {
+        updatedAccounts = updatedAccounts.map(acc => {
+          if (acc.id === newTx.accountId) {
+            if (newTx.type === 'expense') {
+              const delta = isLiabilityAccount(acc.type) ? newTx.amount : -newTx.amount;
+              return { ...acc, balance: acc.balance + delta };
+            }
+            if (newTx.type === 'income') {
+              const delta = isLiabilityAccount(acc.type) ? -newTx.amount : newTx.amount;
+              return { ...acc, balance: acc.balance + delta };
+            }
+            if (newTx.type === 'transfer') {
+              const delta = isLiabilityAccount(acc.type) ? newTx.amount : -newTx.amount;
+              return { ...acc, balance: acc.balance + delta };
+            }
+          }
+
+          if (newTx.type === 'transfer' && acc.id === newTx.toAccountId) {
+            const delta = isLiabilityAccount(acc.type) ? -newTx.amount : newTx.amount;
+            return { ...acc, balance: acc.balance + delta };
+          }
+
+          return acc;
+        });
+      }
+
+      return {
+        ...prev,
+        accounts: updatedAccounts,
+        transactions: updatedTransactions,
+      };
+    });
+  }, [updateStateAndPersist]);
+
   // 2. Accounts
   const addAccount = useCallback((accData: Omit<Account, 'id'>) => {
     const newAcc: Account = {
@@ -376,10 +423,25 @@ export function useFinanceStore() {
     }));
   }, [updateStateAndPersist]);
 
+  const updateCategoryClassification = useCallback((categoryId: string, classification: 'needs' | 'wants' | 'savings') => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      categories: prev.categories.map(c => (c.id === categoryId ? { ...c, classification } : c)),
+    }));
+  }, [updateStateAndPersist]);
+
+  const updateBudgetRuleConfig = useCallback((config: { needsRatio: number; wantsRatio: number; savingsRatio: number }) => {
+    updateStateAndPersist(prev => ({
+      ...prev,
+      budgetRuleConfig: config,
+    }));
+  }, [updateStateAndPersist]);
+
   return {
     state,
     isLoaded,
     addTransaction,
+    addTransactionsBatch,
     addAccount,
     updateAccountBalance,
     deleteAccount,
@@ -405,5 +467,7 @@ export function useFinanceStore() {
     saveNote,
     addCategory,
     deleteCategory,
+    updateCategoryClassification,
+    updateBudgetRuleConfig,
   };
 }

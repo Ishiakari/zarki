@@ -30,6 +30,7 @@ import {
   calculateMonthlySpending,
   formatCurrency,
 } from '../domain/calculator';
+import { compute503020Breakdown, BudgetRuleConfig, DEFAULT_BUDGET_RULE_CONFIG, inferCategoryClassification } from '../domain/budgetRule';
 import { computePhilippineIncomeTax2026, TaxRegimeMode } from '../domain/philippineTax';
 import { theme, typography } from '../theme/colors';
 import { CalculatorKeypad } from '../components/CalculatorKeypad';
@@ -47,10 +48,13 @@ interface PlanScreenProps {
   shoppingList?: ShoppingItem[];
   warranties?: WarrantyItem[];
   notes?: FinanceNote[];
+  budgetRuleConfig?: BudgetRuleConfig;
   currency: string;
   bottomInset?: number;
   onSetBudget?: (categoryId: string, amount: number, interval?: 'monthly' | 'weekly' | 'yearly') => void;
   onDeleteBudget?: (categoryId: string) => void;
+  onUpdateCategoryClassification?: (categoryId: string, classification: 'needs' | 'wants' | 'savings') => void;
+  onUpdateBudgetRuleConfig?: (config: BudgetRuleConfig) => void;
   onAddGoal?: (goal: Omit<Goal, 'id'>) => void;
   onUpdateGoal?: (goalId: string, data: Partial<Goal>) => void;
   onDeleteGoal?: (goalId: string) => void;
@@ -70,7 +74,7 @@ interface PlanScreenProps {
   onSaveNote?: (id: string | null, title: string, content: string) => void;
 }
 
-type PlanFilter = 'all' | 'budgets' | 'goals' | 'bills' | 'installments' | 'debts' | 'tax';
+type PlanFilter = 'all' | '503020' | 'budgets' | 'goals' | 'bills' | 'installments' | 'debts' | 'tax';
 
 interface AmountDisplayCardProps {
   label: string;
@@ -136,10 +140,13 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   accounts,
   recurring,
   installments = [],
+  budgetRuleConfig,
   currency,
   bottomInset = 20,
   onSetBudget,
   onDeleteBudget,
+  onUpdateCategoryClassification,
+  onUpdateBudgetRuleConfig,
   onAddGoal,
   onUpdateGoal,
   onDeleteGoal,
@@ -233,6 +240,14 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
     const isCompleted = inst.paidTerms >= inst.totalTerms;
     return isCompleted ? sum : sum + inst.monthlyAmount;
   }, 0);
+
+  // 50/30/20 Rule Computation
+  const effectiveRuleConfig: BudgetRuleConfig = budgetRuleConfig || DEFAULT_BUDGET_RULE_CONFIG;
+  const breakdown503020 = compute503020Breakdown(transactions, categories, currentYearMonth, effectiveRuleConfig);
+
+  // Category classification edit state
+  const [selectedCatForClassification, setSelectedCatForClassification] = useState<Category | null>(null);
+  const [catClassificationModalOpen, setCatClassificationModalOpen] = useState(false);
 
   // Handlers
   const handleSaveBudget = () => {
@@ -380,6 +395,15 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
           </Pressable>
 
           <Pressable
+            style={[styles.filterChip, activeFilter === '503020' && styles.filterChipActive]}
+            onPress={() => setActiveFilter('503020')}
+          >
+            <Text style={[styles.filterChipText, activeFilter === '503020' && styles.filterChipTextActive]}>
+              50/30/20 Rule
+            </Text>
+          </Pressable>
+
+          <Pressable
             style={[styles.filterChip, activeFilter === 'budgets' && styles.filterChipActive]}
             onPress={() => setActiveFilter('budgets')}
           >
@@ -477,6 +501,216 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 <Text style={styles.heroStatLabel}>Recurring & Loans</Text>
                 <Text style={[styles.heroStatValue, { color: theme.textSecondary }]}>
                   {formatCurrency(monthlyRecurringBills + monthlyInstallmentBills, currency)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* SECTION: 50/30/20 RULE BREAKDOWN */}
+        {(activeFilter === 'all' || activeFilter === '503020') && (
+          <View style={styles.sectionWrap}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleGroup}>
+                <Ionicons name="pie-chart" size={18} color="#06B6D4" />
+                <Text style={styles.sectionTitle}>50/30/20 Rule Analysis</Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.categoryClassifyBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => setCatClassificationModalOpen(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="options-outline" size={14} color="#06B6D4" />
+                <Text style={styles.categoryClassifyBtnText}>Classify</Text>
+              </Pressable>
+            </View>
+
+            {/* 50/30/20 Summary Card */}
+            <View style={styles.ruleSummaryCard}>
+              <View style={styles.ruleHeroRow}>
+                <View>
+                  <Text style={styles.ruleHeroLabel}>Monthly Cash Flow</Text>
+                  <Text style={styles.ruleHeroAmount}>
+                    {breakdown503020.totalIncome > 0
+                      ? formatCurrency(breakdown503020.totalIncome, currency)
+                      : formatCurrency(breakdown503020.totalExpenses, currency)}
+                  </Text>
+                  <Text style={styles.ruleHeroSub}>
+                    {breakdown503020.totalIncome > 0 ? 'Total Monthly Income' : 'Based on Monthly Outflow'}
+                  </Text>
+                </View>
+                <View style={styles.rulePillWrap}>
+                  <View style={styles.ruleBadge}>
+                    <Text style={styles.ruleBadgeText}>
+                      {Math.round(effectiveRuleConfig.needsRatio * 100)}/
+                      {Math.round(effectiveRuleConfig.wantsRatio * 100)}/
+                      {Math.round(effectiveRuleConfig.savingsRatio * 100)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Segmented Progress Bar */}
+              <View style={styles.ruleSplitBar}>
+                <View
+                  style={[
+                    styles.ruleSplitSegment,
+                    {
+                      flex: Math.max(0.05, breakdown503020.needs.actual),
+                      backgroundColor: '#3B82F6',
+                      borderTopLeftRadius: 6,
+                      borderBottomLeftRadius: 6,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.ruleSplitSegment,
+                    {
+                      flex: Math.max(0.05, breakdown503020.wants.actual),
+                      backgroundColor: '#F59E0B',
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.ruleSplitSegment,
+                    {
+                      flex: Math.max(0.05, breakdown503020.savings.actual),
+                      backgroundColor: '#10B981',
+                      borderTopRightRadius: 6,
+                      borderBottomRightRadius: 6,
+                    },
+                  ]}
+                />
+              </View>
+
+              {/* 3 Pillar Cards: Needs, Wants, Savings */}
+              <View style={styles.pillarsGrid}>
+                {/* 1. Needs Card */}
+                <View style={[styles.pillarCard, { borderLeftColor: '#3B82F6' }]}>
+                  <View style={styles.pillarHeader}>
+                    <View style={styles.pillarTitleRow}>
+                      <View style={[styles.pillarDot, { backgroundColor: '#3B82F6' }]} />
+                      <Text style={styles.pillarName}>Needs</Text>
+                    </View>
+                    <Text style={styles.pillarTargetPercent}>
+                      Target {Math.round(effectiveRuleConfig.needsRatio * 100)}%
+                    </Text>
+                  </View>
+
+                  <Text style={styles.pillarActual}>
+                    {formatCurrency(breakdown503020.needs.actual, currency)}
+                  </Text>
+                  <Text style={styles.pillarTarget}>
+                    Cap: {formatCurrency(breakdown503020.needs.target, currency)}
+                  </Text>
+
+                  <View style={styles.pillarFooter}>
+                    <Text style={[styles.pillarPercent, { color: '#3B82F6' }]}>
+                      {breakdown503020.needs.percentOfIncome}% of income
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pillarStatusTag,
+                        breakdown503020.needs.status === 'over'
+                          ? { color: theme.danger }
+                          : { color: '#10B981' },
+                      ]}
+                    >
+                      {breakdown503020.needs.status === 'over'
+                        ? `Over by ${formatCurrency(Math.abs(breakdown503020.needs.diff), currency)}`
+                        : `${formatCurrency(breakdown503020.needs.diff, currency)} left`}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 2. Wants Card */}
+                <View style={[styles.pillarCard, { borderLeftColor: '#F59E0B' }]}>
+                  <View style={styles.pillarHeader}>
+                    <View style={styles.pillarTitleRow}>
+                      <View style={[styles.pillarDot, { backgroundColor: '#F59E0B' }]} />
+                      <Text style={styles.pillarName}>Wants</Text>
+                    </View>
+                    <Text style={styles.pillarTargetPercent}>
+                      Target {Math.round(effectiveRuleConfig.wantsRatio * 100)}%
+                    </Text>
+                  </View>
+
+                  <Text style={styles.pillarActual}>
+                    {formatCurrency(breakdown503020.wants.actual, currency)}
+                  </Text>
+                  <Text style={styles.pillarTarget}>
+                    Cap: {formatCurrency(breakdown503020.wants.target, currency)}
+                  </Text>
+
+                  <View style={styles.pillarFooter}>
+                    <Text style={[styles.pillarPercent, { color: '#F59E0B' }]}>
+                      {breakdown503020.wants.percentOfIncome}% of income
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pillarStatusTag,
+                        breakdown503020.wants.status === 'over'
+                          ? { color: theme.danger }
+                          : { color: '#10B981' },
+                      ]}
+                    >
+                      {breakdown503020.wants.status === 'over'
+                        ? `Over by ${formatCurrency(Math.abs(breakdown503020.wants.diff), currency)}`
+                        : `${formatCurrency(breakdown503020.wants.diff, currency)} left`}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 3. Savings & Debt Card */}
+                <View style={[styles.pillarCard, { borderLeftColor: '#10B981' }]}>
+                  <View style={styles.pillarHeader}>
+                    <View style={styles.pillarTitleRow}>
+                      <View style={[styles.pillarDot, { backgroundColor: '#10B981' }]} />
+                      <Text style={styles.pillarName}>Savings</Text>
+                    </View>
+                    <Text style={styles.pillarTargetPercent}>
+                      Target {Math.round(effectiveRuleConfig.savingsRatio * 100)}%
+                    </Text>
+                  </View>
+
+                  <Text style={styles.pillarActual}>
+                    {formatCurrency(breakdown503020.savings.actual, currency)}
+                  </Text>
+                  <Text style={styles.pillarTarget}>
+                    Goal: {formatCurrency(breakdown503020.savings.target, currency)}
+                  </Text>
+
+                  <View style={styles.pillarFooter}>
+                    <Text style={[styles.pillarPercent, { color: '#10B981' }]}>
+                      {breakdown503020.savings.percentOfIncome}% of income
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pillarStatusTag,
+                        breakdown503020.savings.diff >= 0
+                          ? { color: '#10B981' }
+                          : { color: theme.danger },
+                      ]}
+                    >
+                      {breakdown503020.savings.diff >= 0
+                        ? `Surplus ${formatCurrency(breakdown503020.savings.diff, currency)}`
+                        : `Deficit ${formatCurrency(Math.abs(breakdown503020.savings.diff), currency)}`}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Guidance / Insight Tip */}
+              <View style={styles.ruleAdviceBox}>
+                <Ionicons name="information-circle-outline" size={16} color="#06B6D4" />
+                <Text style={styles.ruleAdviceText}>
+                  {breakdown503020.needs.status === 'over'
+                    ? 'Needs are higher than 50%. In tight months, adjust to 70/20/10 until fixed bills ease.'
+                    : breakdown503020.wants.status === 'over'
+                    ? 'Wants exceed 30%. Consider cutting dining delivery or subscriptions to boost savings.'
+                    : 'Your spending pace is healthy and within the 50/30/20 guidelines for this cycle.'}
                 </Text>
               </View>
             </View>
@@ -1698,6 +1932,120 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
           </View>
         </View>
       </Modal>
+
+      {/* Category Classification Modal for 50/30/20 Rule */}
+      <Modal
+        visible={catClassificationModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCatClassificationModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { height: '82%', maxHeight: '82%' }]}>
+            <View style={styles.sheetHeaderRow}>
+              <View>
+                <Text style={styles.modalHeading}>Classify Categories</Text>
+                <Text style={styles.modalSubheading}>Assign each expense to Needs, Wants, or Savings</Text>
+              </View>
+              <Pressable
+                style={styles.closeCircleBtn}
+                onPress={() => setCatClassificationModalOpen(false)}
+              >
+                <Ionicons name="close" size={20} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {categories
+                .filter(c => c.kind === 'expense')
+                .map(cat => {
+                  const currentClass = inferCategoryClassification(cat);
+                  return (
+                    <View key={cat.id} style={styles.classifyRow}>
+                      <View style={styles.classifyLeft}>
+                        <View style={[styles.classifyIconBox, { backgroundColor: `${cat.color}20` }]}>
+                          <Ionicons
+                            name={(cat.icon as keyof typeof Ionicons.glyphMap) || 'pricetag-outline'}
+                            size={16}
+                            color={cat.color}
+                          />
+                        </View>
+                        <Text style={styles.classifyCatName} numberOfLines={1}>
+                          {cat.label}
+                        </Text>
+                      </View>
+
+                      {/* 3 classification option pills */}
+                      <View style={styles.classifyPillsRow}>
+                        <Pressable
+                          style={[
+                            styles.classifyOptionPill,
+                            currentClass === 'needs' && styles.classifyOptionNeeds,
+                          ]}
+                          onPress={() => onUpdateCategoryClassification?.(cat.id, 'needs')}
+                        >
+                          <Text
+                            style={[
+                              styles.classifyOptionText,
+                              currentClass === 'needs' && styles.classifyOptionTextActive,
+                            ]}
+                          >
+                            Needs
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[
+                            styles.classifyOptionPill,
+                            currentClass === 'wants' && styles.classifyOptionWants,
+                          ]}
+                          onPress={() => onUpdateCategoryClassification?.(cat.id, 'wants')}
+                        >
+                          <Text
+                            style={[
+                              styles.classifyOptionText,
+                              currentClass === 'wants' && styles.classifyOptionTextActive,
+                            ]}
+                          >
+                            Wants
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[
+                            styles.classifyOptionPill,
+                            currentClass === 'savings' && styles.classifyOptionSavings,
+                          ]}
+                          onPress={() => onUpdateCategoryClassification?.(cat.id, 'savings')}
+                        >
+                          <Text
+                            style={[
+                              styles.classifyOptionText,
+                              currentClass === 'savings' && styles.classifyOptionTextActive,
+                            ]}
+                          >
+                            Savings
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+            </ScrollView>
+
+            <Pressable
+              style={styles.classifyDoneBtn}
+              onPress={() => setCatClassificationModalOpen(false)}
+            >
+              <Text style={styles.classifyDoneBtnText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -2459,5 +2807,234 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.primary,
+  },
+  /* 50/30/20 Rule Styles */
+  categoryClassifyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: '#06B6D415',
+    borderWidth: 1,
+    borderColor: '#06B6D433',
+  },
+  categoryClassifyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#06B6D4',
+  },
+  ruleSummaryCard: {
+    backgroundColor: theme.surface1,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.cardBorder,
+    gap: 14,
+  },
+  ruleHeroRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  ruleHeroLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  ruleHeroAmount: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  ruleHeroSub: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    marginTop: 1,
+  },
+  rulePillWrap: {
+    alignItems: 'flex-end',
+  },
+  ruleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: '#06B6D420',
+  },
+  ruleBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#06B6D4',
+  },
+  ruleSplitBar: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: theme.surface2,
+    gap: 2,
+  },
+  ruleSplitSegment: {
+    height: '100%',
+  },
+  pillarsGrid: {
+    gap: 10,
+  },
+  pillarCard: {
+    backgroundColor: theme.surface2,
+    borderRadius: 14,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+    borderColor: theme.cardBorder,
+  },
+  pillarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pillarTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pillarDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  pillarName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.text,
+  },
+  pillarTargetPercent: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.textMuted,
+  },
+  pillarActual: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  pillarTarget: {
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 1,
+  },
+  pillarFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.cardBorder,
+  },
+  pillarPercent: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  pillarStatusTag: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  ruleAdviceBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#06B6D410',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#06B6D425',
+  },
+  ruleAdviceText: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.textSecondary,
+    lineHeight: 16,
+  },
+  /* Classification Modal */
+  classifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.cardBorder,
+  },
+  classifyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    marginRight: 8,
+  },
+  classifyIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  classifyCatName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.text,
+    flex: 1,
+  },
+  classifyPillsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  classifyOptionPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: theme.surface2,
+    borderWidth: 1,
+    borderColor: theme.cardBorder,
+  },
+  classifyOptionNeeds: {
+    backgroundColor: '#3B82F625',
+    borderColor: '#3B82F6',
+  },
+  classifyOptionWants: {
+    backgroundColor: '#F59E0B25',
+    borderColor: '#F59E0B',
+  },
+  classifyOptionSavings: {
+    backgroundColor: '#10B98125',
+    borderColor: '#10B981',
+  },
+  classifyOptionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.textMuted,
+  },
+  classifyOptionTextActive: {
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  classifyDoneBtn: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  classifyDoneBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

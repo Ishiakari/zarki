@@ -74,6 +74,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [customCatName, setCustomCatName] = useState('');
   const [customCatColor, setCustomCatColor] = useState(CATEGORY_COLORS[0]);
+  const [customCatClassification, setCustomCatClassification] = useState<'needs' | 'wants' | 'savings'>('wants');
   const [customCatIcon, setCustomCatIcon] = useState<keyof typeof Ionicons.glyphMap>('pricetag-outline');
 
   useEffect(() => {
@@ -100,8 +101,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       icon: customCatIcon,
       color: customCatColor,
       kind,
+      classification: kind === 'expense' ? customCatClassification : undefined,
     });
     setCustomCatName('');
+    setCustomCatClassification('wants');
     setIsCreatingCategory(false);
   };
 
@@ -392,6 +395,65 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       />
                     ))}
                   </View>
+
+                  {/* 50/30/20 Rule Classification (Expenses only) */}
+                  {type === 'expense' && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={styles.newCatSubLabel}>50/30/20 Classification</Text>
+                      <View style={styles.catClassSwitchRow}>
+                        <Pressable
+                          style={[
+                            styles.catClassSwitchBtn,
+                            customCatClassification === 'needs' && styles.catClassSwitchBtnNeeds,
+                          ]}
+                          onPress={() => setCustomCatClassification('needs')}
+                        >
+                          <Text
+                            style={[
+                              styles.catClassSwitchText,
+                              customCatClassification === 'needs' && styles.catClassSwitchTextActive,
+                            ]}
+                          >
+                            Needs (50%)
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[
+                            styles.catClassSwitchBtn,
+                            customCatClassification === 'wants' && styles.catClassSwitchBtnWants,
+                          ]}
+                          onPress={() => setCustomCatClassification('wants')}
+                        >
+                          <Text
+                            style={[
+                              styles.catClassSwitchText,
+                              customCatClassification === 'wants' && styles.catClassSwitchTextActive,
+                            ]}
+                          >
+                            Wants (30%)
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[
+                            styles.catClassSwitchBtn,
+                            customCatClassification === 'savings' && styles.catClassSwitchBtnSavings,
+                          ]}
+                          onPress={() => setCustomCatClassification('savings')}
+                        >
+                          <Text
+                            style={[
+                              styles.catClassSwitchText,
+                              customCatClassification === 'savings' && styles.catClassSwitchTextActive,
+                            ]}
+                          >
+                            Savings (20%)
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
 
                   <View style={styles.newCatActions}>
                     <Pressable
@@ -802,6 +864,43 @@ const styles = StyleSheet.create({
   newCatSaveText: {
     color: '#000000',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  catClassSwitchRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+  },
+  catClassSwitchBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    backgroundColor: '#0A0E0D',
+    borderWidth: 1,
+    borderColor: theme.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catClassSwitchBtnNeeds: {
+    backgroundColor: '#3B82F625',
+    borderColor: '#3B82F6',
+  },
+  catClassSwitchBtnWants: {
+    backgroundColor: '#F59E0B25',
+    borderColor: '#F59E0B',
+  },
+  catClassSwitchBtnSavings: {
+    backgroundColor: '#10B98125',
+    borderColor: '#10B981',
+  },
+  catClassSwitchText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: theme.textSecondary,
+  },
+  catClassSwitchTextActive: {
+    color: '#FFFFFF',
     fontWeight: '700',
   },
 });

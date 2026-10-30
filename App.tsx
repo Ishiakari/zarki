@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, Pressable, StatusBar, Platform } from 'react-native';
+import { StyleSheet, View, Text, Pressable, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinanceStore } from './src/store/useFinanceStore';
@@ -7,6 +8,7 @@ import { WalletScreen } from './src/screens/WalletScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PlanScreen } from './src/screens/PlanScreen';
 import { AddTransactionModal } from './src/screens/AddTransactionModal';
+import { ChatScreen } from './src/screens/ChatScreen';
 import { theme } from './src/theme/colors';
 
 type Tab = 'wallet' | 'history' | 'plan';
@@ -17,6 +19,7 @@ function AppContent() {
     state,
     isLoaded,
     addTransaction,
+    addTransactionsBatch,
     addAccount,
     updateAccountBalance,
     deleteAccount,
@@ -41,14 +44,18 @@ function AppContent() {
     addWarranty,
     saveNote,
     addCategory,
+    deleteCategory,
+    updateCategoryClassification,
+    updateBudgetRuleConfig,
   } = useFinanceStore();
   const [activeTab, setActiveTab] = useState<Tab>('wallet');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [modalInitialType, setModalInitialType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [modalInitialAmount, setModalInitialAmount] = useState<number | undefined>(undefined);
 
   // Calculate safe insets for Android status bar and gesture navigation bar
-  const androidStatusBarHeight = StatusBar.currentHeight || 28;
+  const androidStatusBarHeight = RNStatusBar.currentHeight || 28;
   const topInset = Platform.OS === 'android' ? Math.max(insets.top, androidStatusBarHeight) : insets.top;
   const bottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 16) : Math.max(insets.bottom, 24);
 
@@ -68,7 +75,7 @@ function AppContent() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
 
       {/* Top Header with Safe Top Padding to prevent status bar overlap */}
       <View style={[styles.header, { paddingTop: topInset + 6 }]}>
@@ -83,6 +90,15 @@ function AppContent() {
         </View>
 
         <View style={styles.headerRight}>
+          <Pressable
+            style={({ pressed }) => [styles.headerIconButton, { marginRight: 8 }, pressed && { opacity: 0.7 }]}
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.1)', borderless: true, radius: 22 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setIsChatOpen(true)}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={theme.text} />
+          </Pressable>
+
           <Pressable
             style={({ pressed }) => [styles.headerIconButton, pressed && { opacity: 0.7 }]}
             android_ripple={{ color: 'rgba(255, 255, 255, 0.1)', borderless: true, radius: 22 }}
@@ -132,10 +148,13 @@ function AppContent() {
             shoppingList={state.shoppingList}
             warranties={state.warranties}
             notes={state.notes}
+            budgetRuleConfig={state.budgetRuleConfig}
             currency={state.preferredCurrency}
             bottomInset={bottomInset}
             onSetBudget={setCategoryBudget}
             onDeleteBudget={deleteCategoryBudget}
+            onUpdateCategoryClassification={updateCategoryClassification}
+            onUpdateBudgetRuleConfig={updateBudgetRuleConfig}
             onAddGoal={addGoal}
             onUpdateGoal={updateGoal}
             onDeleteGoal={deleteGoal}
@@ -242,6 +261,15 @@ function AppContent() {
         categories={state.categories}
         onAddTransaction={addTransaction}
         onAddCategory={addCategory}
+      />
+
+      {/* Offline AI Chat Assistant Modal */}
+      <ChatScreen
+        visible={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        state={state}
+        onAddTransaction={addTransaction}
+        onAddTransactionsBatch={addTransactionsBatch}
       />
     </View>
   );
